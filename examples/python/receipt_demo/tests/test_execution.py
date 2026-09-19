@@ -99,6 +99,10 @@ class PackagingTests(unittest.TestCase):
             return {"uuid": key, "mode": "0600"}
 
         files = upload_code(SimpleNamespace(upload=upload), ROOT)
+        self.assertIn("/app/requirements.txt", files)
+        self.assertIn(
+            b"-r ../requirements.txt", blobs[files["/app/receipt_demo/requirements.txt"]["uuid"]]
+        )
         self.assertNotIn("/app/demo.py", files)
         self.assertNotIn("/app/receipt_demo/__main__.py", files)
         self.assertNotIn("/app/sandbox_jobs.py", files)

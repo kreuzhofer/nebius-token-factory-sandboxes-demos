@@ -187,32 +187,39 @@ class RunTests(unittest.TestCase):
         self.assertEqual(api.submissions, [])
 
     def test_unconfirmed_cancellation_is_interrupted_and_never_resubmitted(self):
-        from unittest.mock import MagicMock, patch
-        from urllib.error import URLError
+        from unittest.mock import patch
 
+        import httpx
         from nebius_sandbox import SandboxClient
 
         requests = []
 
         def respond(request, **options):
-            requests.append((request.method, request.full_url))
+            requests.append((request.method, str(request.url)))
             if request.method == "DELETE":
-                raise URLError("cancellation connection lost")
-            if "/operations/" in request.full_url:
+                raise httpx.ConnectError("cancellation connection lost")
+            if "/operations/" in str(request.url):
                 raise KeyboardInterrupt
-            if request.full_url.endswith("/whoami"):
-                payload = {"limits": {"instance_max_timeout": 3600}}
-            elif request.full_url.endswith("/files"):
-                payload = {"uuid": "uploaded", "sha256": hashlib.sha256(request.data).hexdigest()}
+            if str(request.url).endswith("/whoami"):
+                payload = {
+                    "token_uuid": "identity",
+                    "token_expiration": None,
+                    "limits": {"instance_max_timeout": 3600},
+                }
+            elif str(request.url).endswith("/files"):
+                payload = {
+                    "uuid": "uploaded",
+                    "sha256": hashlib.sha256(request.content).hexdigest(),
+                    "size": len(request.content),
+                }
             else:
                 payload = {"uuid": "known-job"}
-            response = MagicMock()
-            response.__enter__.return_value.read.return_value = json.dumps(payload).encode()
-            return response
+            return httpx.Response(200, json=payload, request=request)
 
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("http_transport.urllib.request.urlopen", side_effect=respond),
+            patch("httpx.HTTPTransport.handle_request", side_effect=respond),
+            patch("httpx.AsyncHTTPTransport.handle_async_request", side_effect=respond),
             self.assertWarnsRegex(RuntimeWarning, "Cancellation unconfirmed: known-job"),
         ):
             result = run_task(

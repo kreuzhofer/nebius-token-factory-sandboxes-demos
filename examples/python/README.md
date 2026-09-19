@@ -1,8 +1,8 @@
 # Python examples for Nebius Token Factory Sandboxes
 
 Each example owns its launch command, agents, dependencies, documentation, and
-tests. The examples share a standard-library client for Nebius Token Factory
-Sandboxes and local configuration loading.
+tests. The examples share an adapter for the official Contree SDK and client
+for Nebius Token Factory Sandboxes, plus local configuration loading.
 
 | Example | Run from this directory | Guide |
 | --- | --- | --- |
@@ -16,12 +16,16 @@ From the repository root:
 
 ```sh
 cd examples/python
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
 python3 -m basic_demo configure
 python3 -m receipt_demo --profile minimal --output receipt-output
 ```
 
-Use Python 3.10+ for local commands. They use only the standard library; receipt
-agent dependencies are installed inside the sandboxes. Configuration lives in
+Use Python 3.10–3.14 for local commands (the pinned SDK requires Python <3.15).
+Install the shared SDK dependencies locally; receipt workers install those same
+pins alongside their agent dependencies inside the sandboxes. Configuration lives in
 `examples/python/.env`. Shell environment values take precedence. Each example
 includes an `.env.example`; copy its values into the shared `.env` as needed.
 The receipt launcher also accepts `--env-file PATH`.
@@ -30,13 +34,14 @@ The receipt launcher also accepts `--env-file PATH`.
 
 ```text
 nebius_sandbox.py       Sandbox images, files, commands, operations, and execution results
-http_transport.py      HTTPS requests shared by sandbox access and model discovery
+http_transport.py      Inference model discovery HTTPS transport and shared error type
 configuration.py       Local settings and sandbox credentials
 tests/                 Shared client and configuration tests
 receipt_demo/          Receipt launcher, workers, inference settings, reports, and tests
 basic_demo/            Smoke/tool launcher, sandbox agent, and tests
 codingagent_demo/      Reusable OpenCode image, task helper, compatibility proof, and tests
 pyproject.toml         Python lint/format rules
+requirements.txt       Shared sandbox SDK/client dependency pins
 requirements-dev.txt   Development dependencies across Python examples
 ```
 
@@ -56,6 +61,9 @@ See the [spawn reference](https://docs.tokenfactory.nebius.com/api-reference/san
 Nebius also documents [operation event streams](https://docs.tokenfactory.nebius.com/api-reference/sandboxes/operations/stream-the-operation-event-log-via-server-sent-events)
 with SSE, `follow=1`, and resume IDs. This client currently uses status polling.
 The official OpenAPI specification documents no completion webhook registration.
+
+See [SDK compatibility](../../docs/sandbox-sdk.md) for the tested package versions,
+constructor differences, and the limited official-client fallbacks.
 
 ## Development
 

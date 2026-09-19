@@ -16,9 +16,9 @@ See the shared [workflow](../../../docs/receipt-demo.md),
 
 ## Run it
 
-Use Python 3.10+ for the standard-library launcher, with an API key and Project
-ID that have access to Nebius Token Factory Sandboxes. The receipt workflow
-itself runs on Python 3.12.
+Use Python 3.10–3.14 with the [shared SDK dependencies](../README.md#setup),
+and an API key and Project ID with access to Nebius Token Factory Sandboxes.
+The receipt workflow itself runs on Python 3.12.
 
 ```sh
 python3 -m basic_demo configure
@@ -125,7 +125,7 @@ commands, and operations without knowing about Python, receipts, or reports.
 | Module | Responsibility |
 | --- | --- |
 | `nebius_sandbox.py` | Image listing/import, file upload/download, command submission, operation polling/cancellation, and execution-result decoding |
-| `http_transport.py` | HTTPS authentication and requests, with safe errors and no automatic submission retries; also used for model discovery |
+| `http_transport.py` | Inference model discovery transport and the shared transport-error type |
 | `configuration.py` | Read local configuration and construct explicit sandbox settings |
 | `receipt_demo/configuration.py` | Receipt inference settings and the child environment |
 | `receipt_demo/sandbox.py` | Package the Python files and choose the receipt jobs' bootstrap, paths, environment, and resource limits |
@@ -145,7 +145,8 @@ coordinator so its concurrency and cancellation behavior remain explicit.
 
 Code upload is shared between the local launcher and coordinator. Workers receive
 the client, configuration, and receipt package; they do not need either local
-launcher. The sandbox client and local commands use only the Python standard library.
+launcher. The uploaded shared requirements install the SDK/client pins inside
+each worker before importing the provider. See [SDK compatibility](../../../docs/sandbox-sdk.md).
 
 ## Inference configuration
 

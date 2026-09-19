@@ -23,7 +23,15 @@ except Exception as exc:
 def upload_code(client, root):
     """Upload the same runnable Python files locally and from a coordinator sandbox."""
     root = Path(root)
-    paths = [root / name for name in ("configuration.py", "http_transport.py", "nebius_sandbox.py")]
+    paths = [
+        root / name
+        for name in (
+            "configuration.py",
+            "http_transport.py",
+            "nebius_sandbox.py",
+            "requirements.txt",
+        )
+    ]
     paths.extend(
         path
         for path in sorted((root / "receipt_demo").iterdir())

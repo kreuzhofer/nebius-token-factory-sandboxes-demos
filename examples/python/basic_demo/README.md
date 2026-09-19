@@ -18,6 +18,9 @@ supports tool calling.
 
 
 ```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
 python3 -m basic_demo configure
 python3 -m basic_demo images
 python3 -m basic_demo smoke
@@ -41,11 +44,15 @@ Commands are submitted as operations. Each execution gets its own VM; this examp
 
 The inference key is passed in the agent execution environment, removed from the agent's environment before tools run, and excluded from subprocess environments. It is still sent to the sandbox service as request metadata; disposable execution is not a guarantee of metadata deletion. Use a scoped test key. This tiny agent is an execution demonstration, not a hardened adversarial agent framework.
 
-### SDK versus HTTPS — checked September 11, 2026
+### Sandbox SDK
 
-There is an official SDK: `contree-sdk`, alongside `contree-client` and a CLI. The service is explicitly beta. At inspection, PyPI served contree-sdk **0.3.6** and contree-client **0.4.0**. The installed SDK constructor was `ContreeSync(config=None, *, base_url=None, token=None)`, while the current guide describes injecting a `contree_client` transport. The documented example therefore does not match that published SDK version.
-
-For this small test, direct HTTPS is the most transparent option: POST /images/import, POST /instances, GET /operations/{id}, DELETE /operations/{id}. The generated contree-client is another reasonable option, especially if you need broad API coverage. Reconsider the high-level SDK when its release and docs align.
+The shared adapter uses `contree-sdk==0.3.6`, `contree-client[httpx]==0.4.0`,
+and `httpx==0.28.1`. It uses the SDK for account limits and checkpoint reads,
+and the official low-level client where the stable SDK cannot preserve the
+existing contract. Submissions are sent once, operation IDs return immediately,
+and local polling deadlines remain separate from server execution deadlines.
+See [SDK compatibility](../../../docs/sandbox-sdk.md) for the verified constructor,
+retry behavior, and capability gaps.
 
 Sources:
 

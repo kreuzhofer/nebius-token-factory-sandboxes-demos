@@ -8,8 +8,8 @@ invalid inputs.
 
 ## Available demos
 
-The current implementations are in Python. Local launchers use the standard
-library; agent runtimes and dependencies run inside the sandboxes.
+The current implementations are in Python. Local launchers use the official
+Contree SDK and client; agent runtimes run inside the sandboxes.
 
 | Demo | What it demonstrates | Status |
 | --- | --- | --- |
@@ -33,6 +33,9 @@ Sandboxes and Token Factory inference. From the repository root:
 
 ```sh
 cd examples/python
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
 python3 -m basic_demo configure
 ```
 

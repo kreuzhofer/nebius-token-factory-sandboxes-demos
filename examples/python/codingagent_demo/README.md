@@ -1,7 +1,7 @@
 # OpenCode on Nebius Token Factory Sandboxes
 
 Run one unattended coding task with Token Factory inference and return its answer,
-workspace archive, and logs. The local launcher uses Python's standard library.
+workspace archive, and logs. The local launcher uses the shared Contree SDK adapter.
 OpenCode runs inside the sandbox with command/file permissions allowed. Networking
 is explicitly enabled for inference and task dependencies.
 
@@ -18,7 +18,8 @@ proof, and the Create, Repair, Extend, and deadline examples.
 ## Build the runtime once
 
 From `examples/python`, configure the shared `.env` using the names in
-[.env.example](.env.example), then run:
+[.env.example](.env.example), and complete the [shared setup](../README.md#setup)
+to install the SDK dependencies. Then run:
 
 ```sh
 python3 -m codingagent_demo build-image --output coding-runtime

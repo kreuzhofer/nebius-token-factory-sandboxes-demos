@@ -1,13 +1,15 @@
 """Exercise the sandbox wire contract and distinguish transport, operation, and process failure."""
 
 import json
+import os
 import unittest
-from io import BytesIO
-from unittest.mock import MagicMock, patch
-from urllib.error import HTTPError, URLError
+from unittest.mock import patch
 
+import httpx
 from http_transport import TransportError
 from nebius_sandbox import ExecutionFailed, Operation, OperationFailed, SandboxClient
+
+from tests.sandbox_http import sandbox_responses
 
 
 class SandboxClientTests(unittest.TestCase):
@@ -15,9 +17,8 @@ class SandboxClientTests(unittest.TestCase):
         self.client = SandboxClient("secret", "project", "https://sandbox.example/v1/")
 
     def test_submit_maps_generic_command_without_receipt_defaults(self):
-        response = MagicMock()
-        response.__enter__.return_value.read.return_value = b'{"uuid":"job"}'
-        with patch("http_transport.urllib.request.urlopen", return_value=response) as send:
+        response = httpx.Response(200, json={"uuid": "job"})
+        with patch("httpx.HTTPTransport.handle_request", return_value=response) as send:
             operation = self.client.submit(
                 "image",
                 command="/bin/sh",
@@ -29,70 +30,107 @@ class SandboxClientTests(unittest.TestCase):
             )
         request = send.call_args.args[0]
         self.assertEqual(operation, "job")
-        self.assertEqual(request.full_url, "https://sandbox.example/v1/instances")
-        self.assertEqual(request.get_header("Authorization"), "Bearer secret")
-        self.assertEqual(request.get_header("Project"), "project")
-        body = json.loads(request.data)
+        self.assertEqual(str(request.url), "https://sandbox.example/v1/instances")
+        self.assertEqual(request.headers["Authorization"], "Bearer secret")
+        self.assertEqual(request.headers["Project"], "project")
+        body = json.loads(request.content)
         self.assertEqual(body["command"], "/bin/sh")
         self.assertEqual(body["args"], ["-c", "echo ready"])
         self.assertEqual(body["cwd"], "/work")
         self.assertEqual(body["files"]["/work/input"]["uuid"], "file")
+        self.assertEqual(body["files"]["/work/input"]["mode"], "0400")
         self.assertEqual(body["env"], {"EXAMPLE": "value"})
         self.assertEqual(body["timeout"], 12)
         self.assertFalse(body["preserve_env"])
         self.assertFalse(body["networking"]["enabled"])
+        self.assertFalse(body["disposable"])
+        self.assertEqual(body["resources_limits"]["max_layer_bytes"], 268435456)
+        self.assertEqual(body["truncate_output_at"], 65536)
         self.assertNotIn("stdin", body)
 
+    def test_submit_preserves_explicit_execution_settings(self):
+        with sandbox_responses({"uuid": "job"}) as requests:
+            self.client.submit(
+                "tag:runtime",
+                command="/usr/local/bin/python3",
+                stdin="print('hello')",
+                networking=True,
+                disposable=True,
+                max_layer_bytes=1024,
+                output_limit=2048,
+            )
+        body = json.loads(requests[0].content)
+        self.assertEqual(body["image"], "tag:runtime")
+        self.assertEqual(
+            body["stdin"], {"value": "print('hello')", "encoding": "ascii", "close": True}
+        )
+        self.assertTrue(body["networking"]["enabled"])
+        self.assertTrue(body["disposable"])
+        self.assertFalse(body["preserve_env"])
+        self.assertEqual(body["resources_limits"]["max_layer_bytes"], 1024)
+        self.assertEqual(body["truncate_output_at"], 2048)
+        self.assertNotIn("cwd", body)
+
     def test_ambiguous_submission_is_not_retried_or_leaked(self):
-        with patch("http_transport.urllib.request.urlopen", side_effect=URLError("secret")) as send:
-            with self.assertRaises(TransportError) as raised:
-                self.client.submit("image", command="/bin/true")
-        self.assertEqual(send.call_count, 1)
-        self.assertNotIn("secret", str(raised.exception))
+        for failure in (
+            httpx.ReadTimeout("secret"),
+            httpx.ConnectError("secret"),
+            httpx.Response(429, json={"error": "secret"}),
+            httpx.Response(503, json={"error": "secret"}),
+        ):
+            with self.subTest(failure=type(failure).__name__):
+
+                def respond(request, failure=failure):
+                    if isinstance(failure, Exception):
+                        raise failure
+                    return failure
+
+                with patch("httpx.HTTPTransport.handle_request", side_effect=respond) as send:
+                    with self.assertRaises(TransportError) as raised:
+                        self.client.submit("image", command="/bin/true")
+                self.assertEqual(send.call_count, 1)
+                self.assertNotIn("secret", str(raised.exception))
 
     def test_http_error_body_is_not_exposed(self):
-        error = HTTPError("https://sandbox.example", 401, "secret", {}, BytesIO(b"secret"))
-        with patch("http_transport.urllib.request.urlopen", side_effect=error):
-            with self.assertRaisesRegex(TransportError, "HTTP 401") as raised:
-                self.client.list_images()
-        self.assertNotIn("secret", str(raised.exception))
+        for call in (self.client.list_images, self.client.limits):
+            with (
+                self.subTest(call=call.__name__),
+                sandbox_responses((401, {"error": "secret"})),
+            ):
+                with self.assertRaisesRegex(TransportError, "HTTP 401") as raised:
+                    call()
+                self.assertNotIn("secret", str(raised.exception))
 
     def test_image_import_listing_and_fallback_result(self):
-        with patch.object(self.client._http, "request", return_value={"uuid": "import"}) as send:
+        with sandbox_responses(
+            {"uuid": "import"},
+            {
+                "images": [
+                    {"uuid": "existing", "tag": "runtime", "created_at": "2026-09-19T00:00:00Z"}
+                ]
+            },
+            {"status": "SUCCESS", "result": {"image": "imported"}},
+        ) as requests:
             self.assertEqual(
                 self.client.import_image("docker://example/image", timeout=15), "import"
             )
-            send.assert_called_once_with(
-                "POST",
-                "/images/import",
-                {
-                    "registry": {"url": "docker://example/image"},
-                    "timeout": 15,
-                },
-            )
-        with patch.object(self.client._http, "request", return_value={"images": []}) as send:
-            self.assertEqual(self.client.list_images(limit=2, offset=3), {"images": []})
-            send.assert_called_once_with("GET", "/images?limit=2&offset=3")
-        with patch.object(
-            self.client._http,
-            "request",
-            return_value={
-                "status": "SUCCESS",
-                "result": {"image": "imported"},
-            },
-        ):
+            images = self.client.list_images(limit=2, offset=3)
+            self.assertEqual(images["images"][0]["uuid"], "existing")
+            self.assertEqual(images["images"][0]["created_at"], "2026-09-19T00:00:00Z")
             self.assertEqual(self.client.wait("import", 5).image, "imported")
+        self.assertEqual(
+            json.loads(requests[0].content),
+            {
+                "registry": {"url": "docker://example/image"},
+                "timeout": 15,
+            },
+        )
+        self.assertEqual(dict(requests[1].url.params), {"limit": "2", "offset": "3"})
+        self.assertEqual(requests[2].url.path, "/v1/operations/import")
 
     def test_poll_until_success(self):
         with (
-            patch.object(
-                self.client._http,
-                "request",
-                side_effect=[
-                    {"status": "EXECUTING"},
-                    {"status": "SUCCESS"},
-                ],
-            ),
+            sandbox_responses({"status": "EXECUTING"}, {"status": "SUCCESS"}),
             patch("nebius_sandbox.time.sleep"),
         ):
             self.assertEqual(self.client.wait("id", 5).status, "SUCCESS")
@@ -100,14 +138,8 @@ class SandboxClientTests(unittest.TestCase):
     def test_unchecked_wait_preserves_failed_operation_and_reports_status_changes(self):
         statuses = []
         with (
-            patch.object(
-                self.client._http,
-                "request",
-                side_effect=[
-                    {"status": "EXECUTING"},
-                    {"status": "EXECUTING"},
-                    {"status": "FAILED"},
-                ],
+            sandbox_responses(
+                {"status": "EXECUTING"}, {"status": "EXECUTING"}, {"status": "FAILED"}
             ),
             patch("nebius_sandbox.time.sleep"),
         ):
@@ -131,13 +163,40 @@ class SandboxClientTests(unittest.TestCase):
         self.assertFalse(result.successful)
 
     def test_limits_only_returns_limit_values(self):
-        with patch.object(
-            self.client._http,
-            "request",
-            return_value={"token": "private-identity", "limits": {"instance_max_timeout": 3600}},
-        ) as send:
+        with sandbox_responses(
+            {
+                "token_uuid": "private-identity",
+                "token_expiration": None,
+                "limits": {"instance_max_timeout": 3600},
+            }
+        ) as requests:
             self.assertEqual(self.client.limits(), {"instance_max_timeout": 3600})
-        send.assert_called_once_with("GET", "/whoami")
+        self.assertEqual(requests[0].url.path, "/v1/whoami")
+        self.assertEqual(requests[0].headers["Authorization"], "Bearer secret")
+        self.assertEqual(requests[0].headers["Project"], "project")
+
+    def test_explicit_configuration_is_not_reinterpreted_as_sdk_environment_names(self):
+        with patch.dict(
+            os.environ, {"literal-token": "wrong-token", "NEBIUS_PROJECT_ID": "wrong-project"}
+        ):
+            client = SandboxClient("literal-token", base_url="https://sandbox.example/custom/v1/")
+            with sandbox_responses(
+                {"token_uuid": "identity", "token_expiration": None},
+                {"uuid": "job"},
+            ) as requests:
+                self.assertEqual(client.limits(), {})
+                self.assertEqual(client.submit("image", command="/bin/true"), "job")
+        for request in requests:
+            self.assertEqual(request.headers["Authorization"], "Bearer literal-token")
+            self.assertNotIn("Project", request.headers)
+            self.assertTrue(request.url.path.startswith("/custom/v1/"))
+
+    def test_download_preserves_binary_checkpoint_contents_and_encodes_path(self):
+        image = "12345678-1234-1234-1234-123456789abc"
+        with sandbox_responses(b"\x00\xffarchive") as requests:
+            self.assertEqual(self.client.download(image, "/work/a b&c.tar"), b"\x00\xffarchive")
+        self.assertEqual(requests[0].url.path, f"/v1/inspect/{image}/download")
+        self.assertEqual(requests[0].url.params["path"], "/work/a b&c.tar")
 
     def test_import_completion_requires_a_successful_retained_image(self):
         for final, expected, error in (
@@ -147,11 +206,7 @@ class SandboxClientTests(unittest.TestCase):
         ):
             with (
                 self.subTest(final=final),
-                patch.object(
-                    self.client._http,
-                    "request",
-                    side_effect=[{"uuid": "import-job"}, {"status": "PENDING"}, final],
-                ) as send,
+                sandbox_responses({"uuid": "import-job"}, {"status": "PENDING"}, final) as requests,
                 patch("nebius_sandbox.time.sleep"),
             ):
                 if error:
@@ -162,41 +217,45 @@ class SandboxClientTests(unittest.TestCase):
                         self.client.import_image_and_wait("docker://example/runtime", timeout=20),
                         expected,
                     )
-                self.assertEqual(send.call_args_list[0].args[2]["timeout"], 20)
-                self.assertEqual(send.call_args_list[-1].args, ("GET", "/operations/import-job"))
+                self.assertEqual(json.loads(requests[0].content)["timeout"], 20)
+                self.assertEqual(requests[-1].url.path, "/v1/operations/import-job")
 
     def test_import_wait_deadline_cancels_known_import(self):
-        with patch.object(
-            self.client._http, "request", return_value={"uuid": "import-job"}
-        ) as send:
+        with sandbox_responses({"uuid": "import-job"}, b"") as requests:
             with self.assertRaises(TimeoutError):
                 self.client.import_image_and_wait("docker://example/runtime", wait_timeout=-1)
-            self.assertEqual(send.call_args.args, ("DELETE", "/operations/import-job"))
+        self.assertEqual(requests[-1].method, "DELETE")
+        self.assertEqual(requests[-1].url.path, "/v1/operations/import-job")
 
     def test_deadline_cancels(self):
-        with patch.object(self.client._http, "request") as send:
+        with sandbox_responses(b"") as requests:
             with self.assertRaises(TimeoutError):
                 self.client.wait("id", -1)
-            send.assert_called_once_with("DELETE", "/operations/id")
+        self.assertEqual(
+            [(r.method, r.url.path) for r in requests], [("DELETE", "/v1/operations/id")]
+        )
 
     def test_interruption_cancels_but_transport_failure_leaves_known_job(self):
-        for error in (KeyboardInterrupt(), TransportError("unavailable")):
+        for failure, expected in (
+            (KeyboardInterrupt(), KeyboardInterrupt),
+            (httpx.ReadError("secret"), TransportError),
+        ):
             with (
-                self.subTest(error=type(error).__name__),
-                patch.object(self.client, "get_operation", side_effect=error),
-                patch.object(self.client, "cancel") as cancel,
-                self.assertRaises(type(error)),
+                self.subTest(failure=type(failure).__name__),
+                sandbox_responses(failure, b"") as requests,
             ):
-                try:
+                with self.assertRaises(expected):
                     self.client.wait("id", 5)
-                finally:
-                    self.assertEqual(cancel.call_count, int(isinstance(error, KeyboardInterrupt)))
+            self.assertEqual(
+                [r.method for r in requests],
+                ["GET", "DELETE"] if expected is KeyboardInterrupt else ["GET"],
+            )
 
     def test_failed_operation_differs_from_failed_process(self):
         for status in ("FAILED", "CANCELLED"):
             with (
                 self.subTest(status=status),
-                patch.object(self.client._http, "request", return_value={"status": status}),
+                sandbox_responses({"status": status}),
             ):
                 with self.assertRaises(OperationFailed):
                     self.client.wait("job", 5)
@@ -214,23 +273,27 @@ class SandboxClientTests(unittest.TestCase):
 
     def test_execution_decodes_streams_and_rejects_truncation(self):
         payload = {
+            "kind": "instance",
             "status": "SUCCESS",
             "result_image_uuid": "retained",
             "metadata": {
+                "command": "/bin/true",
+                "image": "source",
                 "result": {
                     "state": {"exit_code": 0},
                     "stdout": {"encoding": "base64", "value": "aGVsbG8="},
-                    "stderr": {"value": "notice"},
-                }
+                    "stderr": {"encoding": "ascii", "value": "notice"},
+                },
             },
         }
-        result = Operation.from_response("job", payload).execution_result()
+        with sandbox_responses(payload):
+            result = self.client.get_operation("job").execution_result()
         self.assertEqual(
             (result.stdout, result.stderr, result.image), ("hello", "notice", "retained")
         )
         payload["metadata"]["result"]["stdout"]["truncated"] = True
-        with self.assertRaisesRegex(RuntimeError, "truncated"):
-            Operation.from_response("job", payload).execution_result()
+        with sandbox_responses(payload), self.assertRaisesRegex(RuntimeError, "truncated"):
+            self.client.get_operation("job").execution_result()
 
     def test_artifact_execution_requires_image_but_disposable_execution_does_not(self):
         payload = {"status": "SUCCESS", "metadata": {"result": {"state": {"exit_code": 0}}}}
@@ -248,8 +311,20 @@ class SandboxClientTests(unittest.TestCase):
             Operation.from_response("job", payload).execution_result(require_image=True)
 
     def test_upload_rejects_checksum_mismatch(self):
-        with patch.object(
-            self.client._http, "transfer", return_value=b'{"uuid":"file","sha256":"wrong"}'
-        ):
+        with sandbox_responses({"uuid": "file", "sha256": "wrong", "size": 8}):
             with self.assertRaisesRegex(RuntimeError, "checksum"):
                 self.client.upload(b"contents")
+
+    def test_upload_retains_content_and_file_mode(self):
+        with sandbox_responses(
+            {
+                "uuid": "file",
+                "size": 5,
+                "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+            }
+        ) as requests:
+            self.assertEqual(
+                self.client.upload(b"hello", mode="0400"), {"uuid": "file", "mode": "0400"}
+            )
+        self.assertEqual(requests[0].content, b"hello")
+        self.assertEqual(requests[0].headers["Content-Type"], "application/octet-stream")

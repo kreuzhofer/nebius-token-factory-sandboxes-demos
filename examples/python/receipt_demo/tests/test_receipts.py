@@ -412,22 +412,21 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
 
 class TransferTests(unittest.TestCase):
     def test_binary_upload_checksum_and_download_path(self):
+        from tests.sandbox_http import sandbox_responses
+
         api = SandboxClient("test", "project")
         data = b"\x00\xffbinary"
-        with patch.object(
-            api._http,
-            "transfer",
-            return_value=json.dumps(
-                {"uuid": "id", "sha256": hashlib.sha256(data).hexdigest()}
-            ).encode(),
-        ) as transfer:
+        image = "12345678-1234-1234-1234-123456789abc"
+        with sandbox_responses(
+            {"uuid": "id", "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)},
+            data,
+        ) as requests:
             self.assertEqual(api.upload(data), {"uuid": "id", "mode": "0600"})
-            transfer.assert_called_once_with("POST", "/files", data, "application/octet-stream")
-        with patch.object(api._http, "transfer", return_value=data) as transfer:
-            self.assertEqual(api.download("image", "/app/a b.pdf"), data)
-            self.assertEqual(
-                transfer.call_args.args[1], "/inspect/image/download?path=%2Fapp%2Fa+b.pdf"
-            )
+            self.assertEqual(api.download(image, "/app/a b.pdf"), data)
+        self.assertEqual(requests[0].content, data)
+        self.assertEqual(requests[0].headers["Content-Type"], "application/octet-stream")
+        self.assertEqual(requests[1].url.path, f"/sandboxes/v1/inspect/{image}/download")
+        self.assertEqual(requests[1].url.params["path"], "/app/a b.pdf")
 
     def test_retrieval_validates_bytes_before_publishing_success(self):
         data = {"report.json": b"{}", "report.pdf": b"%PDF-test"}
@@ -468,12 +467,14 @@ class TransferTests(unittest.TestCase):
             self.assertFalse((Path(directory) / "report.json").exists())
 
     def test_job_retains_output_without_preserving_environment(self):
+        from tests.sandbox_http import sandbox_responses
+
         api = SandboxClient("test", "project")
-        with patch.object(api._http, "request", return_value={"uuid": "job"}) as request:
+        with sandbox_responses({"uuid": "job"}) as requests:
             self.assertEqual(
                 submit_worker(api, "base", {}, {"NEBIUS_API_KEY": "secret"}, 300), "job"
             )
-            body = request.call_args.args[2]
+            body = json.loads(requests[0].content)
             self.assertFalse(body["disposable"])
             self.assertFalse(body["preserve_env"])
             self.assertEqual(body["cwd"], "/app")

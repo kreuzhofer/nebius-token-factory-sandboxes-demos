@@ -1,4 +1,4 @@
-"""Small HTTPS transport shared by sandbox operations and model discovery."""
+"""Inference model discovery transport and the shared safe transport-error type."""
 
 import json
 import urllib.error

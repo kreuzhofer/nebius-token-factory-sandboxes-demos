@@ -8,13 +8,54 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import time
 import warnings
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from urllib.parse import quote, urlencode
 
-from http_transport import HttpTransport
+from contree_client.exceptions import APIConnectionError, APIStatusError
+from contree_client.httpx import ContreeClient
+from contree_client.models import (
+    ClosableStreamRepr,
+    FileSpec,
+    ImageImportRegistry,
+    InstanceNetworking,
+    InstanceResourcesLimits,
+)
+from contree_sdk import ContreeSync
+from contree_sdk.auth import IAMAuth
+from contree_sdk.config import ContreeConfig
+from contree_sdk.sdk.exceptions.api import ApiStatusCodeError, ContreeApiError
+from http_transport import TransportError
+from httpx import HTTPStatusError
+
+
+class _ExplicitAuth(IAMAuth):
+    """Configuration is already resolved by our entrypoints, including absent project."""
+
+    def resolve(self):
+        return self
+
+    def get_headers(self):
+        headers = {"Authorization": f"Bearer {self.token}"}
+        if self.project_id:
+            headers["Project"] = self.project_id
+        return headers
+
+
+@contextmanager
+def _provider_errors(method):
+    """Keep provider exception bodies and credentials out of caller diagnostics."""
+    try:
+        yield
+    except (APIStatusError, ApiStatusCodeError) as exc:
+        # SDK 0.3.6 reads status from the JSON body, where it can be absent.
+        status = exc.status
+        if isinstance(exc.__cause__, HTTPStatusError):
+            status = exc.__cause__.response.status_code
+        raise TransportError(f"{method} request failed: HTTP {status}") from None
+    except (APIConnectionError, ContreeApiError):
+        raise TransportError(f"{method} request failed: connection unavailable") from None
 
 
 class OperationFailed(RuntimeError):
@@ -104,22 +145,36 @@ class Operation:
 
 class SandboxClient:
     def __init__(self, token, project=None, base_url=None):
-        self._http = HttpTransport(
-            base_url or "https://api.tokenfactory.nebius.com/sandboxes/v1", token, project
+        base_url = (base_url or "https://api.tokenfactory.nebius.com/sandboxes/v1").rstrip("/")
+        if not base_url.startswith("https://"):
+            raise ValueError("HTTPS required")
+        # Both official packages append /v1; callers historically include it.
+        self._client = ContreeClient(
+            token, project=project, base_url=base_url.removesuffix("/v1"), timeout=30, retry=None
+        )
+        self._sdk = ContreeSync(
+            ContreeConfig(
+                auth=_ExplicitAuth(
+                    token=token, project_id=project or "", base_url=base_url.removesuffix("/v1")
+                ),
+                transport_timeout=30,
+            )
         )
 
     def list_images(self, *, limit=100, offset=0):
-        return self._http.request("GET", "/images?" + urlencode({"limit": limit, "offset": offset}))
+        # The SDK image objects omit listing metadata and offset pagination.
+        with _provider_errors("GET"):
+            return self._client.list_images(limit=limit, offset=offset).to_dict()
 
     def limits(self):
         """Return the configured token limits without exposing token identity or credentials."""
-        return self._http.request("GET", "/whoami").get("limits") or {}
+        with _provider_errors("GET"):
+            return self._sdk.get_token_info(refresh=True).limits
 
     def import_image(self, registry_url, *, timeout=300):
-        operation = self._http.request(
-            "POST", "/images/import", {"registry": {"url": registry_url}, "timeout": timeout}
-        )
-        return operation["uuid"]
+        # SDK imports retry submissions, assign tags, and wait internally.
+        with _provider_errors("POST"):
+            return self._client.import_image(ImageImportRegistry(url=registry_url), timeout=timeout)
 
     def import_image_and_wait(self, registry_url, *, timeout=300, wait_timeout=360):
         """Import a caller-selected runtime and return its image after successful completion.
@@ -131,15 +186,16 @@ class SandboxClient:
         return self.wait(operation_id, wait_timeout).require_image()
 
     def upload(self, data, *, mode="0600"):
-        result = json.loads(self._http.transfer("POST", "/files", data, "application/octet-stream"))
-        if result["sha256"] != hashlib.sha256(data).hexdigest():
+        # The stable SDK exposes upload(path), but no public in-memory upload.
+        with _provider_errors("POST"):
+            result = self._client.upload_file(data)
+        if result.sha256 != hashlib.sha256(data).hexdigest():
             raise RuntimeError("Uploaded file checksum mismatch")
-        return {"uuid": result["uuid"], "mode": mode}
+        return {"uuid": result.uuid, "mode": mode}
 
     def download(self, image, path):
-        return self._http.transfer(
-            "GET", f"/inspect/{quote(image, safe='')}/download?" + urlencode({"path": path})
-        )
+        with _provider_errors("GET"):
+            return self._sdk.images.use(image).read(path)
 
     def submit(
         self,
@@ -158,31 +214,33 @@ class SandboxClient:
         output_limit=65536,
     ):
         """Submit a sandbox command once and return its operation ID immediately."""
-        body = {
-            "image": image,
-            "command": command,
-            "args": list(args),
-            "files": files or {},
-            "env": env or {},
-            "preserve_env": False,
-            "disposable": disposable,
-            "networking": {"enabled": networking},
-            "timeout": timeout,
-            "resources_limits": {"max_layer_bytes": max_layer_bytes},
-            "truncate_output_at": output_limit,
-        }
-        if stdin is not None:
-            body["stdin"] = {"value": stdin, "encoding": "ascii", "close": True}
-        if cwd is not None:
-            body["cwd"] = cwd
-        return self._http.request("POST", "/instances", body)["uuid"]
+        with _provider_errors("POST"):
+            return self._client.spawn_instance(
+                image=image,
+                command=command,
+                args=list(args),
+                files={path: FileSpec(**ref) for path, ref in (files or {}).items()},
+                env=env or {},
+                preserve_env=False,
+                disposable=disposable,
+                networking=InstanceNetworking(enabled=networking),
+                timeout=timeout,
+                resources_limits=InstanceResourcesLimits(max_layer_bytes=max_layer_bytes),
+                truncate_output_at=output_limit,
+                stdin=ClosableStreamRepr(value=stdin, encoding="ascii", close=True)
+                if stdin is not None
+                else ...,
+                cwd=cwd if cwd is not None else ...,
+            ).uuid
 
     def get_operation(self, operation_id):
-        payload = self._http.request("GET", "/operations/" + quote(operation_id, safe=""))
+        with _provider_errors("GET"):
+            payload = self._client.get_operation_status(operation_id).to_dict()
         return Operation.from_response(operation_id, payload)
 
     def cancel(self, operation_id):
-        self._http.request("DELETE", "/operations/" + quote(operation_id, safe=""))
+        with _provider_errors("DELETE"):
+            self._client.cancel_operation(operation_id)
 
     def wait(self, operation_id, seconds, *, check=True, on_status=None):
         """Poll to completion; deadlines/interrupts cancel, connection failures do not resubmit.
