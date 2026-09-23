@@ -34,6 +34,7 @@ The receipt launcher also accepts `--env-file PATH`.
 
 ```text
 nebius_sandbox.py       Sandbox images, files, commands, operations, and execution results
+sandbox_events.py      Shared operation events, replay, reconnects and polling fallback
 http_transport.py      Inference model discovery HTTPS transport and shared error type
 configuration.py       Local settings and sandbox credentials
 tests/                 Shared client and configuration tests
@@ -60,7 +61,9 @@ The client's submission `timeout` is the server-side execution limit; the
 `wait()` deadline controls local polling and attempts cancellation when exceeded.
 See the [spawn reference](https://docs.tokenfactory.nebius.com/api-reference/sandboxes/instances/spawn-a-new-container-instance).
 Nebius also documents [operation event streams](https://docs.tokenfactory.nebius.com/api-reference/sandboxes/operations/stream-the-operation-event-log-via-server-sent-events)
-with SSE, `follow=1`, and resume IDs. This client currently uses status polling.
+with SSE, `follow=1`, and resume IDs. The client defaults to status polling;
+the coding demo opts into streaming with `run --stream` and resumes an existing
+task with `monitor --output <task-directory>`.
 The official OpenAPI specification documents no completion webhook registration.
 
 See [SDK compatibility](../../docs/sandbox-sdk.md) for the tested package versions,

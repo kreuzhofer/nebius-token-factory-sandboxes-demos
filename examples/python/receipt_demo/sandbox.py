@@ -29,6 +29,7 @@ def upload_code(client, root):
             "configuration.py",
             "http_transport.py",
             "nebius_sandbox.py",
+            "sandbox_events.py",
             "requirements.txt",
         )
     ]

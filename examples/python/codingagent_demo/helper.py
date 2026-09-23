@@ -16,7 +16,7 @@ class AgentConfig:
     base_url: str = "https://api.tokenfactory.nebius.com/v1"
 
 
-def run_task(client, config, image, task, *, files=(), output, timeout=300):
+def run_task(client, config, image, task, *, files=(), output, timeout=300, stream=False):
     """Block for one unattended task; return outcome and paths to retrieved artifacts.
 
     The image must be built with build_runtime() or descend from that runtime.
@@ -51,6 +51,7 @@ def run_task(client, config, image, task, *, files=(), output, timeout=300):
     result_dir = "/opt/coding-results/" + uuid4().hex
     request = {
         "result_dir": result_dir,
+        "stream": stream,
         "task": task,
         "model": config.model,
         "base_url": config.base_url,
@@ -71,5 +72,6 @@ def run_task(client, config, image, task, *, files=(), output, timeout=300):
         env={"NEBIUS_API_KEY": config.api_key},
         networking=True,
         result_dir=result_dir,
+        stream=stream,
         metadata={"model": config.model, "opencode_version": OPENCODE_VERSION},
     )

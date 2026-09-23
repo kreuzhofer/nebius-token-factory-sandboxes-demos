@@ -10,6 +10,7 @@ from nebius_sandbox import SandboxClient
 from . import AgentConfig, build_runtime, run_task
 from .deadline import run_deadline_probe
 from .examples import STAGES, run_example, run_ladder
+from .job import monitor_task
 from .proof import run_proof
 from .runtime import MODEL
 
@@ -42,6 +43,11 @@ def main():
     run.add_argument("--model")
     run.add_argument("--timeout", type=int, default=300)
     run.add_argument("--output", required=True, type=Path)
+    run.add_argument("--stream", action="store_true", help="Show live agent activity")
+    monitor = commands.add_parser("monitor", help="Resume an existing task without submitting work")
+    monitor.add_argument(
+        "--output", required=True, type=Path, help="Existing task output directory"
+    )
     proof = commands.add_parser("proof", help="Edit/test two tasks and verify runtime-image reuse")
     proof_image = proof.add_mutually_exclusive_group(required=True)
     proof_image.add_argument("--image")
@@ -59,6 +65,12 @@ def main():
     values = load_env(args.env_file)
     config = SandboxConfig.from_env(values)
     client = SandboxClient(config.token, config.project, config.base_url)
+    if args.command == "monitor":
+        result = monitor_task(client, args.output)
+        print(json.dumps(result, indent=2))
+        if result["status"] != "completed":
+            raise SystemExit(1)
+        return
     if args.command == "build-image":
         image = build_runtime(client, args.output, base_image=args.base_image)
         print(f"Runtime image: {image}")
@@ -99,6 +111,7 @@ def main():
         files=args.file,
         output=args.output,
         timeout=args.timeout,
+        stream=args.stream,
     )
     print(json.dumps(result, indent=2))
     if result["status"] != "completed":

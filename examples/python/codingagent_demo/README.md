@@ -128,7 +128,7 @@ The helper checks the account's reported maximum timeout before submission.
 The worker reserves 30 seconds of the requested execution time for packaging
 and stops the agent process group if its deadline expires. The client permits
 another 120 seconds for operation completion and checkpoint retrieval.
-Progress currently shows operation-state changes; detailed agent events are
+Without `--stream`, progress shows operation-state changes; detailed agent events are
 retrieved when the job finishes.
 
 ## Results and failures
@@ -179,3 +179,71 @@ initial task checkpoint as its follow-up image and supplies explicit saved conte
 Worker results use a unique directory per attempt so inherited results cannot be
 mistaken for the current outcome. The coding examples above still begin each task
 from the prepared runtime.
+
+## Live monitoring and restart recovery
+
+On macOS or Linux, opt into readable agent messages, tool activity and sandbox
+lifecycle events while a task runs:
+
+```sh
+python3 -m codingagent_demo run --stream \
+  --runtime coding-runtime/runtime.json \
+  --task 'Fix add in proof/calculator.py, run its tests, and report the results.' \
+  --file codingagent_demo/fixtures/proof \
+  --timeout 300 --output coding-output-stream
+```
+
+The worker publishes output before completion and redacts the inference key
+before writing logs or sending live bytes, including keys split across pipe
+reads. Unrecognized process output and stderr remain visible; the full underlying
+sandbox events are retained in `transcript.jsonl`. Terminal control characters
+are removed from the readable presentation. Other coding commands retain their
+existing default behavior.
+
+If the launcher crashes or its connection is lost, resume the **same operation**:
+
+```sh
+python3 -m codingagent_demo monitor --output coding-output-stream
+```
+
+Use the task directory containing `job.json`. Resume needs sandbox credentials;
+it does not need to supply the inference key again. It never uploads inputs or
+submits another job. It retrieves the normal answer, workspace archive and logs.
+It does not continue a surrounding analysis workflow or change that workflow's
+last successful result. Older task records without an original deadline cannot
+be resumed by this command.
+
+The transcript is append-only, and each complete event is flushed to disk before
+it is printed. Resume reconstructs partial messages from the saved events and
+requests events after the last saved ID. Duplicate events are skipped. A torn
+final append is discarded so the unfinished event can be replayed. Saving and
+printing cannot be atomic: a crash may leave an event saved but never printed;
+it remains available in the transcript. Only one monitor may write a task
+output directory at a time, enforced by an OS file lock released on process exit.
+
+The shared adapter reconnects after retryable stream errors, with exponential
+backoff and `Retry-After` support. After five consecutive failures without event
+progress, it falls back to status polling and flags the live transcript as
+potentially incomplete. Authentication errors, missing operations and invalid
+protocol data are reported without blind retries. All requests remain bound by
+the original waiting deadline; reconnecting and restarting do not extend it.
+Completed results can still be recovered after that deadline. If a resumed job
+is still running after its deadline, cancellation is requested.
+
+**Ctrl+C requests cancellation**, both when launching and when resuming. It is
+not a detach command. Unconfirmed cancellation and connection loss preserve the
+operation ID and return an interrupted outcome; the server execution cap remains
+active. The monitor can subsequently recover available results from that ID.
+
+Task success still depends on the operation, process and required final artifacts.
+Missing live output does not by itself turn a successful task into a failure.
+`job.json` and `result.json` include a `monitoring` section with the last event
+cursor, transcript path, whether the completion event was seen, transcript
+completeness and warnings. Output limits can truncate the transcript even when
+execution succeeds. The full worker logs are retrieved from the checkpoint when
+available. Event and checkpoint retention are service-controlled; resume cannot
+guarantee recovery after they expire.
+
+See the [accepted design](../../../docs/coding-job-monitor.md) and
+[issue #34](https://github.com/kreuzhofer/nebius-token-factory-sandboxes-demos/issues/34)
+for the contract and live verification evidence.

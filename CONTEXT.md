@@ -88,6 +88,16 @@ The coding agent's execution status, answer, available workspace files, and
 diagnostics. Completion means the agent finished; passing correctness checks is
 a separate result.
 
+**Coding-job monitor**:
+The observer of an existing coding task that presents live agent messages, tool
+activity and sandbox lifecycle changes. Reconnecting or restarting the monitor
+does not start another coding task.
+
+**Task transcript**:
+The recorded events from a coding task, retained for diagnostics alongside its
+readable live presentation. Missing transcript events are reported separately
+from the task's final outcome; an incomplete transcript does not imply task failure.
+
 ### Data analysis
 
 **Analysis step**:

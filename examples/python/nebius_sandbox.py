@@ -13,6 +13,7 @@ import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
+import sandbox_events
 from contree_client.exceptions import APIConnectionError, APIStatusError
 from contree_client.httpx import ContreeClient
 from contree_client.models import (
@@ -74,17 +75,22 @@ class ExecutionResult:
     exit_code: int | None = None
     timed_out: bool = False
     signal: int | None = None
+    output_truncated: bool = False
 
     @property
     def successful(self):
         return self.exit_code == 0 and not self.timed_out and self.signal in (None, -1, 0)
 
 
-def _decode(stream):
-    if stream.get("truncated"):
+def _decode(stream, *, allow_truncated=False):
+    if stream.get("truncated") and not allow_truncated:
         raise RuntimeError("Sandbox output was truncated")
     value = stream.get("value", "")
-    return base64.b64decode(value).decode() if stream.get("encoding") == "base64" else value
+    return (
+        base64.b64decode(value).decode(errors="replace" if allow_truncated else "strict")
+        if stream.get("encoding") == "base64"
+        else value
+    )
 
 
 @dataclass(frozen=True)
@@ -120,7 +126,7 @@ class Operation:
             raise RuntimeError(f"Operation {self.id} returned no filesystem image")
         return self.image
 
-    def execution_result(self, *, require_image=False, check=True):
+    def execution_result(self, *, require_image=False, check=True, allow_truncated=False):
         """Read output from a successful operation; check=False retains failed process state.
 
         require_image=True additionally requires a filesystem for artifact retrieval.
@@ -134,16 +140,36 @@ class Operation:
         ):
             raise ExecutionFailed(f"Sandbox process {self.id} failed")
         return ExecutionResult(
-            _decode(self._result.get("stdout") or {}),
-            _decode(self._result.get("stderr") or {}),
+            _decode(self._result.get("stdout") or {}, allow_truncated=allow_truncated),
+            _decode(self._result.get("stderr") or {}, allow_truncated=allow_truncated),
             self.require_image() if require_image else self.image,
             state.get("exit_code"),
             bool(state.get("timed_out")),
             state.get("signal"),
+            any((self._result.get(name) or {}).get("truncated") for name in ("stdout", "stderr")),
         )
 
 
 class SandboxClient:
+    def operation_events(self, operation_id, *, after=None, deadline=None):
+        """Read one event stream; a caller acknowledges events by persisting their IDs."""
+        yield from sandbox_events.operation_events(
+            self._client,
+            operation_id,
+            after=after,
+            deadline=deadline,
+        )
+
+    def wait_with_events(self, operation_id, seconds, *, after=None, on_event, on_warning):
+        return sandbox_events.wait_with_events(
+            self,
+            operation_id,
+            seconds,
+            after=after,
+            on_event=on_event,
+            on_warning=on_warning,
+        )
+
     def __init__(self, token, project=None, base_url=None):
         base_url = (base_url or "https://api.tokenfactory.nebius.com/sandboxes/v1").rstrip("/")
         if not base_url.startswith("https://"):

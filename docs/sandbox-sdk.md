@@ -45,6 +45,7 @@ path such as `/sandboxes`. HTTPS remains required. HTTP requests retain a
 | Image import | Client `import_image` | Stable SDK retries submissions, assigns a tag, and waits internally. The adapter must return the operation ID immediately, avoid creating tags, and keep deadlines separate. |
 | In-memory upload | Client `upload_file` | Stable SDK exposes `files.upload(path)` but no public bytes-upload method. Preserve byte uploads without staging local files, then verify SHA-256 and retain the requested mode. |
 | Command submission | Client `spawn_instance` | Stable SDK's run/wait lifecycle retries some submissions and does not expose the required independent submission/status contract. Preserve explicit environment, networking, disposable state, files, output/layer limits, and immediate operation identity. |
+| Operation events | Client `iter_operation_events` | The shared adapter owns bounded reconnects, durable-cursor acknowledgement and polling fallback; the client's high-level follow helper can stop before draining the final log and does not preserve these retry/error rules. |
 | Operation status/cancellation | Client `get_operation_status` / `cancel_operation` | Stable SDK exposes these through its internal combined lifecycle rather than independent public operations. |
 
 All fallbacks stay inside the shared adapter and use public official-client
@@ -53,7 +54,9 @@ discovery transport and inference transports remain separate.
 
 `Operation` still distinguishes failed/cancelled operations from unsuccessful
 processes; `ExecutionResult` retains exit status, timeout, signal, and decoded
-output. Truncated output is rejected. Artifact callers still require a retained
+output. Truncated output is rejected by default. Streaming callers can explicitly
+allow partial output and inspect `output_truncated`, preserving the process
+outcome independently of transcript completeness. Artifact callers still require a retained
 image, while disposable executions can succeed without one.
 
 ## Retries and errors
@@ -89,3 +92,13 @@ Live IDs, credentials, and generated results stay outside tracked files.
 Release references: [SDK release](https://pypi.org/project/contree-sdk/0.3.6/),
 [official client release](https://pypi.org/project/contree-client/0.4.0/),
 and [SDK source](https://github.com/nebius/contree-sdk).
+
+
+The opt-in event observer uses the same official client with one request per
+connection attempt. It resumes with `Last-Event-Id`, retries documented transient
+stream failures (including temporary HTTP 410 finalization), honors `Retry-After`,
+and falls back to status polling after five consecutive failures without progress.
+These are event-read retries, never task-submission retries. Provider-specific
+stream handling lives in `examples/python/sandbox_events.py`, shipped alongside
+the shared adapter in receipt worker bundles. Existing non-streaming callers keep
+their original polling and truncation behavior.
