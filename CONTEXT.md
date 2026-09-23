@@ -87,3 +87,25 @@ supplied files or folders. Each task begins in a fresh workspace.
 The coding agent's execution status, answer, available workspace files, and
 diagnostics. Completion means the agent finished; passing correctness checks is
 a separate result.
+
+### Data analysis
+
+**Analysis step**:
+One requested analysis of supplied data or a follow-up to a preceding analysis.
+Its execution outcome and the correctness of its returned artifacts are separate results.
+
+**Prepared analysis runtime**:
+A reusable environment containing the agent and analysis dependencies before any
+analysis task has run.
+
+**Analysis checkpoint**:
+The retained filesystem after an analysis step. A continuation starts a fresh
+execution environment from this checkpoint; it does not restore a running process.
+
+**Saved analysis context**:
+The preceding request, answer and artifact references explicitly supplied to a
+follow-up. It accompanies the checkpoint instead of relying on an in-memory conversation.
+
+**Last successful analysis result**:
+The most recent step whose execution succeeded and whose required artifacts passed
+validation. A failed or unconfirmed continuation does not replace it.

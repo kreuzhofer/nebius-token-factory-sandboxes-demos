@@ -76,6 +76,26 @@ class RunTests(unittest.TestCase):
             self.assertFalse(any(b"inference-secret" in content for content in api.uploads))
             self.assertEqual(len(api.submissions), 1)
 
+    def test_continuation_cannot_reuse_an_inherited_worker_result(self):
+        from http_transport import TransportError
+
+        class StaleResult(TaskService):
+            def download(self, image, path):
+                if not path.startswith("/opt/coding-result/"):
+                    raise TransportError("GET request failed: HTTP 404")
+                return super().download(image, path)
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = run_task(
+                StaleResult(),
+                AgentConfig("key"),
+                "parent-checkpoint",
+                "Continue",
+                output=Path(directory) / "result",
+            )
+            self.assertEqual(result["status"], "failed")
+            self.assertIsNone(result["archive"])
+
     def test_missing_archive_is_reported_instead_of_a_complete_result(self):
         from http_transport import TransportError
 

@@ -1,0 +1,19 @@
+{
+  "count": 6,
+  "total": "215.00",
+  "discarded": 4,
+  "regions": {
+    "East": {"count": 1, "total": "20.00"},
+    "North": {"count": 2, "total": "125.50"},
+    "South": {"count": 2, "total": "74.50"},
+    "West": {"count": 1, "total": "-5.00"}
+  },
+  "rows": [
+    {"sale_id": "S001", "region": "North", "amount": "100.00"},
+    {"sale_id": "S002", "region": "North", "amount": "25.50"},
+    {"sale_id": "S003", "region": "South", "amount": "80.00"},
+    {"sale_id": "S004", "region": "South", "amount": "-5.50"},
+    {"sale_id": "S005", "region": "East", "amount": "20.00"},
+    {"sale_id": "S006", "region": "West", "amount": "-5.00"}
+  ]
+}

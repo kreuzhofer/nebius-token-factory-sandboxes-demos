@@ -8,12 +8,12 @@ import tarfile
 from pathlib import Path
 
 WORKSPACE = Path("/workspace")
-OUTPUT = Path("/opt/coding-result")
 
 
 def main():
     request = json.loads(Path("/opt/coding-request.json").read_text())
-    OUTPUT.mkdir(parents=True, exist_ok=True)
+    output = Path(request["result_dir"])
+    output.mkdir(parents=True, exist_ok=False)
     key = os.environ.pop("NEBIUS_API_KEY")
     model = request["model"]
     configuration = {
@@ -53,8 +53,8 @@ def main():
         if version != request["opencode_version"]:
             raise RuntimeError("Runtime image has a different OpenCode version")
         with (
-            (OUTPUT / "events.jsonl").open("w") as events,
-            (OUTPUT / "stderr.log").open("w") as errors,
+            (output / "events.jsonl").open("w") as events,
+            (output / "stderr.log").open("w") as errors,
         ):
             process = subprocess.Popen(
                 [
@@ -82,7 +82,7 @@ def main():
                 raise
         final_step = None
         failure = None
-        for line in (OUTPUT / "events.jsonl").read_text().splitlines():
+        for line in (output / "events.jsonl").read_text().splitlines():
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
@@ -106,16 +106,16 @@ def main():
         # Configuration contains an environment reference, never the actual key.
         # Redact accidental echoes from diagnostic text before publishing it.
         for name in ("events.jsonl", "stderr.log"):
-            path = OUTPUT / name
+            path = output / name
             if path.exists():
                 path.write_text(path.read_text(errors="replace").replace(key, "[REDACTED]"))
         result["answer"] = result["answer"].replace(key, "[REDACTED]")
         try:
-            with tarfile.open(OUTPUT / "workspace.tar.gz", "w:gz") as archive:
+            with tarfile.open(output / "workspace.tar.gz", "w:gz") as archive:
                 archive.add(WORKSPACE, arcname="workspace")
         except Exception as exc:
             result.update(status="failed", error=f"Workspace archive failed: {type(exc).__name__}")
-        (OUTPUT / "result.json").write_text(json.dumps(result, indent=2))
+        (output / "result.json").write_text(json.dumps(result, indent=2))
         print(json.dumps({"status": result["status"]}), flush=True)
 
 

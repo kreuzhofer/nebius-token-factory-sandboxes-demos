@@ -173,3 +173,9 @@ The pinned CLI's [run command source](https://github.com/anomalyco/opencode/blob
 provides JSON events and disables interactive question/plan transitions in
 headless mode. Provider configuration follows the matching
 [OpenCode provider documentation](https://opencode.ai/docs/providers/).
+
+The [analysis demo](../analysis_demo/README.md) uses the same helper with an
+initial task checkpoint as its follow-up image and supplies explicit saved context.
+Worker results use a unique directory per attempt so inherited results cannot be
+mistaken for the current outcome. The coding examples above still begin each task
+from the prepared runtime.

@@ -12,7 +12,17 @@ from http_transport import TransportError
 
 
 def run_workspace_job(
-    client, image, *, output, timeout, files, script, env=None, networking=False, metadata=None
+    client,
+    image,
+    *,
+    output,
+    timeout,
+    files,
+    script,
+    env=None,
+    networking=False,
+    metadata=None,
+    result_dir="/opt/coding-result",
 ):
     """Submit once, save identity early, and retrieve an explicit outcome and available files."""
     maximum = client.limits().get("instance_max_timeout")
@@ -25,6 +35,7 @@ def run_workspace_job(
         "image": None,
         "status": "preparing",
         "runtime_image": image,
+        "result_dir": result_dir,
         **(metadata or {}),
         "timeout": timeout,
         "answer": "",
@@ -83,7 +94,7 @@ def run_workspace_job(
             else:
                 try:
                     payload = json.loads(
-                        client.download(operation.require_image(), "/opt/coding-result/result.json")
+                        client.download(operation.require_image(), result_dir + "/result.json")
                     )
                     if payload["status"] not in {"completed", "failed", "timed_out"}:
                         raise ValueError("Invalid worker status")
@@ -100,7 +111,7 @@ def run_workspace_job(
         if operation.image:
             for name in ("workspace.tar.gz", "events.jsonl", "stderr.log"):
                 try:
-                    data = client.download(operation.image, "/opt/coding-result/" + name)
+                    data = client.download(operation.image, result_dir + "/" + name)
                 except TransportError:
                     continue
                 path = output / name

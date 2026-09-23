@@ -40,6 +40,7 @@ tests/                 Shared client and configuration tests
 receipt_demo/          Receipt launcher, workers, inference settings, reports, and tests
 basic_demo/            Smoke/tool launcher, sandbox agent, and tests
 codingagent_demo/      Reusable OpenCode image, task helper, compatibility proof, and tests
+analysis_demo/         CSV analysis, checkpoint follow-up, explicit context, and validation
 pyproject.toml         Python lint/format rules
 requirements.txt       Shared sandbox SDK/client dependency pins
 requirements-dev.txt   Development dependencies across Python examples
@@ -90,3 +91,6 @@ If a hook fixes files, review and stage those changes before committing again.
 Tests cover accounting, document errors, all three agent roles, bounded sandbox
 fan-out, cancellation, and verified artifact retrieval. Development dependencies
 stay separate from the dependencies installed in sandbox jobs.
+
+For a complete CSV analysis and regional follow-up from a retained task checkpoint,
+see the [analysis demo](analysis_demo/README.md).

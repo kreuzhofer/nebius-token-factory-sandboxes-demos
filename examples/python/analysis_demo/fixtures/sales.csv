@@ -1,0 +1,11 @@
+sale_id,region,amount
+S001, north ,100.00
+S002,North,25.50
+S003,SOUTH,80.00
+S004,South,-5.50
+S005,East,20.00
+S006,West,-5.00
+S002,North,999.00
+S007,East,invalid
+S008,,12.00
+,West,10.00

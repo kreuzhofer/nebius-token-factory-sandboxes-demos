@@ -149,3 +149,6 @@ examples/python/.venv/bin/pre-commit run --all-files --show-diff-on-failure
 Hooks and CI run Ruff formatting/linting, file checks, and Python tests. These
 checks need no credentials or live sandbox jobs. See the
 [Python development guide](examples/python/README.md#development) for details.
+
+Try the [Python analysis demo](examples/python/analysis_demo/README.md) to clean
+sales CSVs, generate charts, and continue from the resulting filesystem checkpoint.

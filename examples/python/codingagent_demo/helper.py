@@ -3,6 +3,7 @@
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from uuid import uuid4
 
 from .job import run_workspace_job
 from .runtime import MODEL, OPENCODE_VERSION
@@ -18,8 +19,9 @@ class AgentConfig:
 def run_task(client, config, image, task, *, files=(), output, timeout=300):
     """Block for one unattended task; return outcome and paths to retrieved artifacts.
 
-    The image must be built with build_runtime(). A lost connection returns an
-    interrupted outcome with the known operation ID and never resubmits work.
+    The image must be built with build_runtime() or descend from that runtime.
+    A lost connection returns an interrupted outcome with the known operation ID
+    and never resubmits work. Each attempt owns a unique worker result directory.
     """
     if not task.strip() or not config.api_key or not config.model:
         raise ValueError("Task, inference key and model are required")
@@ -46,7 +48,9 @@ def run_task(client, config, image, task, *, files=(), output, timeout=300):
             if destination in uploads:
                 raise ValueError("Input paths overlap inside the workspace")
             uploads[destination] = client.upload(path.read_bytes())
+    result_dir = "/opt/coding-results/" + uuid4().hex
     request = {
+        "result_dir": result_dir,
         "task": task,
         "model": config.model,
         "base_url": config.base_url,
@@ -66,5 +70,6 @@ def run_task(client, config, image, task, *, files=(), output, timeout=300):
         script="/opt/coding-worker.py",
         env={"NEBIUS_API_KEY": config.api_key},
         networking=True,
+        result_dir=result_dir,
         metadata={"model": config.model, "opencode_version": OPENCODE_VERSION},
     )
