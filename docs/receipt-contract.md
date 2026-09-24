@@ -1,9 +1,8 @@
 # Receipt and expense-report contract
 
-Every language example produces versioned JSON with the same field names and
-outcome meanings. This documents the approved [version 1 decision](https://github.com/kreuzhofer/nebius-token-factory-sandboxes-demos/issues/5#issuecomment-5679350432)
-and the existing Python representation. Generated wording, text-block segmentation,
-and PDF bytes need not match across implementations.
+The receipt demo produces versioned JSON with the field names and outcome
+meanings below. Generated wording, text-block segmentation, and PDF bytes can
+vary between runs.
 
 ## Parsed receipts
 

@@ -1,6 +1,6 @@
 # Python sandbox SDK compatibility
 
-Checked against installed packages on September 19, 2026:
+The shared Python requirements pin these packages:
 
 | Package | Pinned version | Python requirement |
 | --- | --- | --- |
@@ -17,12 +17,9 @@ the provider and do not need the SDK themselves.
 
 ## Constructor and configuration
 
-The published stable SDK accepts
-`ContreeSync(config=None, *, base_url=None, token=None)`. The current
-[official client reference](https://docs.tokenfactory.nebius.com/sandboxes/sdk/python_sdk/reference/client)
-describes injecting a `contree_client` transport instead. That constructor does
-not apply to the pinned stable release. The installed SDK uses its own HTTPX
-transport; the separately installed official client supplies the fallbacks below.
+SDK `0.3.6` accepts
+`ContreeSync(config=None, *, base_url=None, token=None)` and uses its own HTTPX
+transport. The separately installed official client supplies the fallbacks below.
 
 The adapter constructs `ContreeConfig` explicitly. Its `IAMAuth` specialization
 uses the already resolved configuration literally, preventing the SDK from
@@ -35,7 +32,7 @@ removes that suffix because both packages append it, retaining any preceding
 path such as `/sandboxes`. HTTPS remains required. HTTP requests retain a
 30-second transport timeout.
 
-## Capability mapping and remaining gaps
+## Adapter capabilities
 
 | Shared capability | Official API used | Reason for fallback where applicable |
 | --- | --- | --- |
@@ -49,10 +46,9 @@ path such as `/sandboxes`. HTTPS remains required. HTTP requests retain a
 | Operation status/cancellation | Client `get_operation_status` / `cancel_operation` | Stable SDK exposes these through its internal combined lifecycle rather than independent public operations. |
 
 All fallbacks stay inside the shared adapter and use public official-client
-methods and models. No hand-written sandbox HTTP transport remains. The model
-discovery transport and inference transports remain separate.
+methods and models. Model discovery and inference transports remain separate.
 
-`Operation` still distinguishes failed/cancelled operations from unsuccessful
+`Operation` distinguishes failed/cancelled operations from unsuccessful
 processes; `ExecutionResult` retains exit status, timeout, signal, and decoded
 output. Truncated output is rejected by default. Streaming callers can explicitly
 allow partial output and inspect `output_truncated`, preserving the process
@@ -61,8 +57,8 @@ image, while disposable executions can succeed without one.
 
 ## Retries and errors
 
-Inspection of SDK `0.3.6` found that its operation starter uses `CircuitRetrier`
-for `ApiTimeoutError` and `TooManyRequestsError`, with no public retry-off option.
+SDK `0.3.6` retries operation submission after `ApiTimeoutError` and
+`TooManyRequestsError` using `CircuitRetrier`, with no public retry-off option.
 The adapter therefore never uses SDK run/import submission. The official client
 is constructed with `retry=None`, which sends each request once, including
 HTTP 429 responses. No operation is resubmitted after an ambiguous failure.
@@ -73,7 +69,7 @@ Unconfirmed cancellation warns and preserves the original exception; server
 execution timeouts remain active. Connection failure while polling does not
 cancel or resubmit a known operation.
 
-Both packages' HTTP errors become the existing `TransportError`, with status
+Both packages' HTTP errors become `TransportError`, with status
 codes but no response bodies or exception chains in displayed diagnostics. The
 stable SDK sometimes omits the HTTP status when it is absent from the JSON error
 body; the adapter recovers the status from its underlying HTTP exception.
@@ -85,14 +81,11 @@ They cover configuration, single submission, execution options, image import and
 listing, upload integrity, polling/cancellation, result decoding, and checkpoint
 reads. Receipt packaging and coding task/outcome tests exercise the consumers.
 
-Live validation results and any remaining compatibility limitations are recorded
-on [issue #36](https://github.com/kreuzhofer/nebius-token-factory-sandboxes-demos/issues/36).
-Live IDs, credentials, and generated results stay outside tracked files.
-
 Release references: [SDK release](https://pypi.org/project/contree-sdk/0.3.6/),
 [official client release](https://pypi.org/project/contree-client/0.4.0/),
 and [SDK source](https://github.com/nebius/contree-sdk).
 
+## Event streaming
 
 The opt-in event observer uses the same official client with one request per
 connection attempt. It resumes with `Last-Event-Id`, retries documented transient
@@ -100,5 +93,5 @@ stream failures (including temporary HTTP 410 finalization), honors `Retry-After
 and falls back to status polling after five consecutive failures without progress.
 These are event-read retries, never task-submission retries. Provider-specific
 stream handling lives in `examples/python/sandbox_events.py`, shipped alongside
-the shared adapter in receipt worker bundles. Existing non-streaming callers keep
-their original polling and truncation behavior.
+the shared adapter in receipt worker bundles. Non-streaming callers use status
+polling and reject truncated output.

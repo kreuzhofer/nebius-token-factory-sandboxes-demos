@@ -139,7 +139,6 @@ The command deliberately exits **1**. Verify that the follow-up is `failed`,
 while the parent check confirms that mutation is absent from the original.
 
 Generated outputs and infrastructure IDs belong in ignored `analysis-output*`
-directories. Live verification evidence belongs on
-[issue #30](https://github.com/kreuzhofer/nebius-token-factory-sandboxes-demos/issues/30).
+directories.
 The underlying filesystem continuation model is described in the official
 [branching documentation](https://docs.tokenfactory.nebius.com/sandboxes/sdk/python_sdk/branching).

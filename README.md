@@ -1,143 +1,173 @@
-# Nebius Token Factory Sandboxes Demos
+# Nebius Token Factory Sandboxes demos
 
-Examples of building and hosting agents in **Nebius Token Factory Sandboxes**,
-with **Nebius Token Factory** providing inference. The demos show the execution
-and orchestration process: supply inputs, start sandbox jobs, collect outcomes,
-and retrieve files. They run automatically, including reporting failures and
-invalid inputs.
+Run agents and their tools in **Nebius Token Factory Sandboxes**, with
+**Nebius Token Factory** providing inference. These Python examples show how to
+start isolated jobs, reuse prepared environments, branch from filesystem
+checkpoints, monitor execution, and retrieve results.
 
-## Available demos
+## Choose a demo
 
-The current implementations are in Python. Local launchers use the official
-Contree SDK and client; agent runtimes run inside the sandboxes.
-
-| Demo | What it demonstrates | Status |
+| Demo | What you learn | Results |
 | --- | --- | --- |
-| [Basic](examples/python/basic_demo/README.md) | Sandbox smoke test and a small agent that executes Python tools | Implemented |
-| [Receipts](examples/python/receipt_demo/README.md) | A coordinator fans out receipt agents, collects their outcomes, starts a report agent, and returns JSON/PDF or errors | Implemented |
-| [Coding agent](examples/python/codingagent_demo/README.md) | OpenCode executes a task with supplied files in a fresh sandbox, using a reusable runtime image and Token Factory inference | Implemented |
-
-The coding demo is inspired by the task-and-result workflow in
-[OpenAI's Agents API](https://developers.openai.com/api/docs/guides/agents-api/quickstart#1-run-a-task).
-It provides a Python helper backed by OpenCode and Nebius Token Factory Sandboxes,
-with Token Factory for inference. Its interface is specific to this demo.
-
-It includes Create, Repair, and Extend examples, independent
-correctness checks, and a deterministic timeout probe. Completion and correctness
-are separate outcomes; a failed check stops the full sequence without a retry.
+| [Basic](examples/python/basic_demo/README.md) | Submit a sandbox command and let a small agent execute Python tools | Command output and the agent's answer |
+| [Receipt reporting](examples/python/receipt_demo/README.md) | Coordinate multiple sandbox agents with bounded concurrency | Expense report JSON and a PDF containing original receipts |
+| [Coding agent](examples/python/codingagent_demo/README.md) | Reuse an OpenCode runtime, supply files, stream progress, and resume monitoring | Answer, workspace archive, logs, and independent correctness checks |
+| [Data analysis](examples/python/analysis_demo/README.md) | Continue analysis in a fresh sandbox from a previous task's checkpoint | Cleaned CSV, summaries, charts, and saved analysis context |
+| [Dependency upgrade](examples/python/upgrade_demo/README.md) | Branch from a working baseline, validate an upgrade, and roll back a rejected result | Selected checkpoint, project archive, and explicit validation outcomes |
 
 ## Setup
 
-Use Python 3.10+ locally and credentials with access to Nebius Token Factory
-Sandboxes and Token Factory inference. From the repository root:
+Use Python **3.10–3.14** locally; Python **3.12** is recommended and used by the
+sandbox runtimes and development tools. You need credentials with access to
+Sandboxes and, for agent tasks, Token Factory inference.
 
 ```sh
-cd examples/python
+git clone https://github.com/kreuzhofer/nebius-token-factory-sandboxes-demos.git
+cd nebius-token-factory-sandboxes-demos/examples/python
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 python3 -m basic_demo configure
-```
-
-The configuration command prompts for credentials and writes a gitignored
-`examples/python/.env`. Sandbox and inference credentials can differ. See the
-[example configuration](examples/python/codingagent_demo/.env.example) for
-`CONTREE_TOKEN`, `CONTREE_PROJECT`, and `NEBIUS_API_KEY`. Shell environment values
-take precedence over the file.
-
-Check sandbox access:
-
-```sh
 python3 -m basic_demo smoke
 ```
 
-All remaining demo commands below run from `examples/python`.
+`configure` prompts for credentials and writes a gitignored
+`examples/python/.env`. `CONTREE_TOKEN` supplies sandbox access and falls back to
+`NEBIUS_API_KEY`; `CONTREE_PROJECT` selects the sandbox project.
+`NEBIUS_API_KEY` supplies inference access. Sandbox and inference credentials can
+differ. Shell environment values take precedence over the file. See the
+[configuration example](examples/python/codingagent_demo/.env.example).
 
-## Run the receipt workflow
+All commands below run from `examples/python` with the virtual environment active.
+Use a fresh output directory for each run.
 
-Start with the small input set:
+## How Sandboxes are used
+
+A launcher uploads inputs and submits a command against a base image or retained
+checkpoint. Submission returns an operation ID; the launcher then observes the
+job and retrieves its output. The receipt demo runs its coordinator inside a
+sandbox, where it starts and collects the receipt and report jobs.
+
+A retained checkpoint contains filesystem state, including installed dependencies
+and output files. Starting a child from that checkpoint creates a fresh execution
+environment; it does not restore a running process or an in-memory conversation.
+Children can start from the same checkpoint without changing their parent or
+siblings. The analysis and upgrade demos exercise these relationships directly.
+
+Server execution limits and local waiting deadlines are separate. Completion of
+an agent task is also separate from correctness: the demos validate required
+artifacts or run trusted checks before accepting results. A monitor reconnects to
+an existing operation; it does not submit replacement work.
+
+Checkpoint and event availability are subject to service retention. Download the
+artifacts you need. Workspace archives contain project files and data; prepared
+runtime dependencies remain in the remote checkpoint. Keep credentials,
+generated artifacts, and runtime manifests out of Git.
+
+## Run the demos
+
+### Basic: sandbox commands and a Python-tool agent
+
+```sh
+python3 -m basic_demo smoke
+python3 -m basic_demo models
+# Set NEBIUS_MODEL in .env to an available model that supports tool calling.
+python3 -m basic_demo agent
+```
+
+The smoke test checks sandbox execution without inference. The agent calculates
+primes using a Python tool inside the sandbox. See the
+[basic guide](examples/python/basic_demo/README.md) for image reuse and limits.
+
+### Receipt reporting
 
 ```sh
 python3 -m receipt_demo --profile minimal --output receipt-output-minimal
-```
-
-Run the full fixture set with up to three receipt agents at once:
-
-```sh
 python3 -m receipt_demo --profile demo --concurrency 3 --output receipt-output-demo
 ```
 
-The coordinator hands back the final report or errors. Flags and document failures
-are automated outcomes, without a manual correction stage. See the
-[receipt guide](examples/python/receipt_demo/README.md) for custom inputs, model
-settings, output files, and timeout controls.
+The small profile includes a readable receipt, an unreadable total, and a corrupt
+PDF. The full demo processes 14 inputs. Results include `report.json`,
+`report.pdf`, and the coordinator outcome. Flags and document errors are completed
+automated outcomes. See the [receipt guide](examples/python/receipt_demo/README.md)
+for custom files, model settings, and artifact retrieval.
 
-## Run the coding agent
+### Coding agent and live monitoring
 
-Build the runtime once:
+Build the runtime once, then reuse it for tasks:
 
 ```sh
 python3 -m codingagent_demo build-image --output coding-runtime
+python3 -m codingagent_demo run --stream \
+  --runtime coding-runtime/runtime.json \
+  --task 'Fix add in proof/calculator.py, run its tests, and report the results.' \
+  --file codingagent_demo/fixtures/proof \
+  --timeout 300 --output coding-output-task
 ```
 
-This imports a Python base image, installs pinned OpenCode and supporting tools,
-and saves the resulting sandbox checkpoint. It creates
-`coding-runtime/runtime.json`, containing the prepared image ID and build metadata.
-Later tasks read that local file to reuse the runtime in fresh sandboxes.
+To resume observation after a lost connection or launcher restart:
 
-Run the complete example sequence:
+```sh
+python3 -m codingagent_demo monitor --output coding-output-task
+```
+
+Resume uses the saved operation ID. **Ctrl+C requests cancellation**, including
+when monitoring an existing task.
+
+Run the Create, Repair, Extend, and timeout examples:
 
 ```sh
 python3 -m codingagent_demo example all \
+  --runtime coding-runtime/runtime.json --output coding-output-examples
+```
+
+See the [coding guide](examples/python/codingagent_demo/README.md) for
+individual examples, custom tasks, the Python helper, and result handling.
+
+### Analysis and checkpoint follow-ups
+
+```sh
+python3 -m pip install -r analysis_demo/requirements.txt
+python3 -m analysis_demo --output analysis-output-demo
+```
+
+The first task cleans sales data and generates a summary and chart. A fresh agent
+starts from that task's checkpoint and produces a regional breakdown using saved
+context and inherited data. Results and the last successful step are recorded in
+`run/analysis.json`. See the [analysis guide](examples/python/analysis_demo/README.md)
+for custom CSVs, prepared-runtime reuse, and the controlled failure scenario.
+
+### Dependency upgrade and rollback
+
+```sh
+python3 -m upgrade_demo \
   --runtime coding-runtime/runtime.json \
-  --output coding-output-ladder
+  --output upgrade-output-demo
 ```
 
-The sequence creates a CSV summary script, repairs an uploaded project, extends
-it with more features, and checks server timeout handling. Use `example create`,
-`example repair`, `example extend`, or `example deadline` to run one stage.
-Coding tasks use OpenCode with Token Factory inference; the deadline probe uses
-no model. The default coding model is `moonshotai/Kimi-K2.7-Code`; override it with
-`--model` or `NEBIUS_CODING_MODEL`.
+Omit `--runtime` to build a coding runtime automatically. Two independent agent
+tasks upgrade a SQLite ledger from SQLAlchemy 1.4 to 2.0. One returns a validated
+candidate. The other first passes validation, then receives a deliberately
+injected regression and returns the independently verified original baseline.
 
-For your own task, use `python3 -m codingagent_demo run` with `--task` or
-`--task-file`, and repeat `--file` to supply files or folders. See the
-[coding guide](examples/python/codingagent_demo/README.md) for a complete command,
-the Python helper, runtime-image reuse, and outcome handling.
+The default command intentionally exits **1** because the rollback scenario
+rejects an upgrade. `run/upgrade.json` reports `demonstration_complete: true` when
+both intended paths succeed. See the [upgrade guide](examples/python/upgrade_demo/README.md)
+for separate scenarios, execution limits, checkpoints, and archives.
 
-Each run saves its answer, status, available workspace archive, and logs in the
-chosen output directory. Use a fresh output directory for each invocation.
-`ladder.json` records the complete sequence; each stage has its own outcome file.
-Generated runtime manifests and run artifacts remain local. Do not commit
-credentials or live sandbox, project, image, or operation IDs. Documentation uses
-placeholders; task plans and execution evidence belong in
-[GitHub Issues](https://github.com/kreuzhofer/nebius-token-factory-sandboxes-demos/issues).
+## Code and development
 
-## Repository layout
+Each demo lives under `examples/python/<demo>/` with its launcher, dependencies,
+fixtures, tests, and guide. The examples share `nebius_sandbox.py` for provider
+operations, `sandbox_events.py` for event streaming, and `configuration.py` for
+local settings. See the [Python guide](examples/python/README.md) and
+[SDK integration reference](docs/sandbox-sdk.md).
 
-```text
-examples/
-  python/                  Shared sandbox client, configuration, and development tools
-    basic_demo/            Sandbox smoke test and Python-tool agent
-    receipt_demo/          Coordinator, receipt agents, report agent, and launcher
-    codingagent_demo/      Runtime image, task helper, examples, fixtures, and checks
-fixtures/
-  receipts/                Shared receipt inputs, provenance, and asset tools
-docs/                      Shared contracts, workflows, research, and agent instructions
-.github/workflows/         Repository CI
-.pre-commit-config.yaml    Hook orchestration across language examples
-```
+Receipt inputs and attribution are in [fixtures/receipts](fixtures/receipts/README.md);
+the [workflow](docs/receipt-demo.md) and [JSON contract](docs/receipt-contract.md)
+describe their outputs.
 
-Add languages under `examples/<language>/` and keep each demo in a dedicated
-folder within its language. Provider API handling belongs in the shared client;
-example-specific orchestration, files, dependencies, and tests belong with the
-example. Receipt implementations share the [fixtures](fixtures/receipts/README.md),
-[contract](docs/receipt-contract.md), and [workflow](docs/receipt-demo.md).
-
-## Development
-
-Use Python 3.12 for the tests and pinned development tools. From the repository
-root:
+From the repository root:
 
 ```sh
 python3.12 -m venv examples/python/.venv
@@ -146,9 +176,5 @@ examples/python/.venv/bin/pre-commit install --install-hooks
 examples/python/.venv/bin/pre-commit run --all-files --show-diff-on-failure
 ```
 
-Hooks and CI run Ruff formatting/linting, file checks, and Python tests. These
-checks need no credentials or live sandbox jobs. See the
-[Python development guide](examples/python/README.md#development) for details.
-
-Try the [Python analysis demo](examples/python/analysis_demo/README.md) to clean
-sales CSVs, generate charts, and continue from the resulting filesystem checkpoint.
+Hooks and CI run file checks, Ruff formatting/linting, and Python tests. These
+checks need no credentials or live sandbox jobs.

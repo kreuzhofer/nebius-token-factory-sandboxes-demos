@@ -48,7 +48,7 @@ python3 -m receipt_demo --retrieve COORDINATOR_FILESYSTEM_UUID --output receipt-
 Use the filesystem UUID printed by the run or recorded in `job.json`. The job is
 non-disposable so its files can be downloaded after the process exits. Environment
 variables are not preserved in that filesystem. Inputs and generated files remain
-subject to the sandbox service's beta retention policy; this example creates no
+subject to the sandbox service's retention policy; this example creates no
 persistent tag and offers no deletion guarantee. Retrieve artifacts promptly.
 
 ## What runs where

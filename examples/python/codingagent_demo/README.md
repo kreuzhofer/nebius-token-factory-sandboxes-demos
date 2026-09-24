@@ -5,13 +5,6 @@ workspace archive, and logs. The local launcher uses the shared Contree SDK adap
 OpenCode runs inside the sandbox with command/file permissions allowed. Networking
 is explicitly enabled for inference and task dependencies.
 
-The helper is inspired by the task-and-result workflow in
-[OpenAI's Agents API](https://developers.openai.com/api/docs/guides/agents-api/quickstart#1-run-a-task):
-supply a task and files, let an agent execute it, and retrieve the result.
-This demo implements that experience with a Python helper, OpenCode,
-Nebius Token Factory Sandboxes, and Token Factory inference. It has its own
-interface and does not implement OpenAI API compatibility.
-
 The demo includes a reusable runtime-image build, an edit-and-test compatibility
 proof, and the Create, Repair, Extend, and deadline examples.
 
@@ -41,7 +34,7 @@ No inference credentials are passed to the build. Subsequent task jobs start fro
 this image and do not download or install the OpenCode binary. Each job gets a
 fresh workspace; task outputs are not used as the base for the next task.
 
-## Run the automated proof
+## Check runtime reuse
 
 ```sh
 python3 -m codingagent_demo proof \
@@ -197,8 +190,7 @@ The worker publishes output before completion and redacts the inference key
 before writing logs or sending live bytes, including keys split across pipe
 reads. Unrecognized process output and stderr remain visible; the full underlying
 sandbox events are retained in `transcript.jsonl`. Terminal control characters
-are removed from the readable presentation. Other coding commands retain their
-existing default behavior.
+are removed from the readable presentation.
 
 If the launcher crashes or its connection is lost, resume the **same operation**:
 
@@ -243,7 +235,3 @@ completeness and warnings. Output limits can truncate the transcript even when
 execution succeeds. The full worker logs are retrieved from the checkpoint when
 available. Event and checkpoint retention are service-controlled; resume cannot
 guarantee recovery after they expire.
-
-See the [accepted design](../../../docs/coding-job-monitor.md) and
-[issue #34](https://github.com/kreuzhofer/nebius-token-factory-sandboxes-demos/issues/34)
-for the contract and live verification evidence.

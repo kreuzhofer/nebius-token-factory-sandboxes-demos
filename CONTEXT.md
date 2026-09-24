@@ -1,11 +1,8 @@
 # Agent demos
 
-Receipts demonstrate automated agents running in Nebius Token Factory Sandboxes
-and using Token Factory for inference. The expense report retains original
-evidence and flags problematic records; the demo has no manual review or
-correction stage.
-
-Three agent roles carry the workflow from input receipts to the final result.
+These demos use Nebius Token Factory Sandboxes for agent execution and Nebius
+Token Factory for inference. They cover receipt reporting, coding tasks, data
+analysis, and dependency upgrades, with explicit results and failure outcomes.
 
 ## Language
 

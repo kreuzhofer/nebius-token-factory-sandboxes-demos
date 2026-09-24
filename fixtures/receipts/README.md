@@ -27,10 +27,15 @@ python3 fixtures/receipts/check.py --list demo
 | `missing_merchant` | Masked-merchant synthetic variant in isolation |
 | `all` | All 18 inputs, including orientation and blur variants |
 
-The receipt pipeline is not implemented yet; this command lists its future
-input paths. Run `python3 -m basic_demo agent` from `examples/python/` for the prime-number tool demo.
-The coordinator should pass the selected **input files and distinct input IDs**
-to workers and retain originals for the report appendix. `source_receipt_id`,
+Run the [receipt demo](../../examples/python/receipt_demo/README.md) from
+`examples/python` to process a profile:
+
+```sh
+python3 -m receipt_demo --profile minimal --output receipt-output-minimal
+```
+
+The coordinator passes the selected **input files and distinct input IDs**
+to workers and retains originals for the report appendix. `source_receipt_id`,
 coverage tags, and fixture classifications are fixture bookkeeping, not extraction
 evidence or a shortcut for duplicate detection. Detect duplicates from the actual
 files/receipt evidence. Never send synthetic source definitions or expected
@@ -65,10 +70,8 @@ merchant behavior, while mixed with s08 it can also be a duplicate candidate.
 Known totals can remain included when only a secondary field is missing;
 unknown totals and monetary contradictions are final flags/exclusions.
 
-Visual inspection corrected the earlier research's missing-merchant description
-of r03. We retained the selected public file and added v06 to provide that case.
-Low-resolution public evidence is intentionally retained, not labelled as a
-guaranteed successful extraction. No model has been run on these inputs.
+The merchant is visible in r03; v06 exercises a missing merchant heading.
+Low-resolution public inputs may produce incomplete extraction.
 
 ## Lightweight checks and rebuilding
 
@@ -102,4 +105,4 @@ and deterministic PDF metadata; rendering uses the pinned packages. Rebuilds
 with other platforms/library versions can change raster bytes, so keep the
 checked-in assets and manifest together. Visually inspect regenerated pages if
 changing the recipes. Increment `fixture_version` when intentionally publishing
-a new fixture set. No manual annotation sign-off is required.
+a new fixture set.

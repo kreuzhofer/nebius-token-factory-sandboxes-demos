@@ -117,6 +117,4 @@ test dependency. From `examples/python`:
 
 These tests need no credentials, model calls, or sandbox jobs. They exercise the
 real ledger/checker commands and orchestration outcomes at the sandbox service
-boundary. The [confirmed brief](../../../docs/dependency-upgrade-demo.md) records
-the design; [issue #31](https://github.com/kreuzhofer/nebius-token-factory-sandboxes-demos/issues/31)
-holds live execution evidence.
+boundary.

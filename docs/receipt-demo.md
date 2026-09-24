@@ -1,9 +1,9 @@
 # Receipt-to-expense-report demo
 
 This demo shows automated agents hosted in Nebius Token Factory Sandboxes, with
-inference through Token Factory. Each language implements the full workflow and
-generates its own JSON and PDF. See the [examples index](../README.md#examples)
-for setup and commands.
+inference through Token Factory. The Python example generates JSON and a PDF.
+See the [receipt guide](../examples/python/receipt_demo/README.md) for setup and
+commands.
 
 ## Workflow
 
@@ -67,5 +67,4 @@ reference and an error explanation. Include attribution for public originals.
 
 Full text and field evidence belong in JSON. Execution traces, setup details, and
 sandbox job IDs stay outside the PDF. The coordinator returns retrievable artifacts
-after jobs finish; each implementation documents its file-transfer and retention
-behavior.
+after jobs finish; the receipt guide documents file transfer and retention.
