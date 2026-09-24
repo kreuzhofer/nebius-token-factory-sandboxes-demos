@@ -9,6 +9,7 @@ for Nebius Token Factory Sandboxes, plus local configuration loading.
 | Receipt expense reporting | `python3 -m receipt_demo --profile minimal` | [Receipt demo](receipt_demo/README.md) |
 | Sandbox smoke and Python tool | `python3 -m basic_demo smoke` / `python3 -m basic_demo agent` | [Basic demo](basic_demo/README.md) |
 | OpenCode coding agent | `python3 -m codingagent_demo --help` | [Coding demo](codingagent_demo/README.md) |
+| Dependency upgrade and rollback | `python3 -m upgrade_demo --output upgrade-output` | [Upgrade demo](upgrade_demo/README.md) |
 
 ## Setup
 
@@ -42,6 +43,7 @@ receipt_demo/          Receipt launcher, workers, inference settings, reports, a
 basic_demo/            Smoke/tool launcher, sandbox agent, and tests
 codingagent_demo/      Reusable OpenCode image, task helper, compatibility proof, and tests
 analysis_demo/         CSV analysis, checkpoint follow-up, explicit context, and validation
+upgrade_demo/          Dependency upgrade, trusted checks, independent branches, and rollback
 pyproject.toml         Python lint/format rules
 requirements.txt       Shared sandbox SDK/client dependency pins
 requirements-dev.txt   Development dependencies across Python examples

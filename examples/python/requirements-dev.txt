@@ -1,4 +1,5 @@
 -r receipt_demo/requirements.txt
 -r ../../fixtures/receipts/requirements.txt
+-r upgrade_demo/requirements-test.txt
 ruff==0.16.7
 pre-commit==4.6.2

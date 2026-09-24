@@ -119,3 +119,18 @@ follow-up. It accompanies the checkpoint instead of relying on an in-memory conv
 **Last successful analysis result**:
 The most recent step whose execution succeeded and whose required artifacts passed
 validation. A failed or unconfirmed continuation does not replace it.
+
+### Dependency upgrades
+
+**Upgrade baseline**:
+The working project and dependency environment retained before an upgrade, with
+passing fixture tests.
+
+**Upgrade candidate**:
+The project and dependency environment produced by attempting an upgrade in a
+separate branch of the upgrade baseline.
+
+**Upgrade rollback**:
+Selecting the unchanged upgrade baseline after rejecting an upgrade candidate.
+Verified rollback establishes that baseline tests still pass and candidate changes
+are absent from the baseline.

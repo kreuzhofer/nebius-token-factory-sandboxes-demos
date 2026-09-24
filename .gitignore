@@ -16,3 +16,4 @@ coding-runtime*/
 # macOS metadata
 .DS_Store
 analysis-output*/
+upgrade-output*/
