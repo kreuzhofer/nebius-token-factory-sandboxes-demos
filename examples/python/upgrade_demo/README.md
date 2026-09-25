@@ -5,6 +5,72 @@ SQLAlchemy `1.4.54` to `2.0.36` inside Nebius Token Factory Sandboxes. The upgra
 must replace the removed `Engine.execute` API and implicit autocommit while
 preserving existing ledger entries and behavior.
 
+## Follow the checkpoints
+
+A checkpoint saves the sandbox's filesystem, including installed packages, source
+code, and the SQLite database file. Starting a new sandbox from it gives a fresh
+process with those files already present. The starting checkpoint stays unchanged
+while the new sandbox does its work.
+
+The letters below are explanatory labels for checkpoint IDs. The default demo
+runs these steps:
+
+1. **Prepare A, the upgrade baseline.** Install SQLAlchemy `1.4.54`, create the
+   working ledger with three known entries, and retain the filesystem. Verify it
+   before either agent task starts.
+2. **Start the passing attempt from A.** An agent installs `2.0.36` and edits
+   the ledger code in a fresh child. Its finished filesystem is checkpoint **B**.
+   Independent checks pass, so this scenario returns B as its selected result.
+3. **Start the rollback attempt from A too.** A second agent gets the original
+   `1.4.54` environment, independently produces checkpoint **C**, and passes the
+   same upgrade checks. It does not inherit B's edits.
+4. **Create a deliberately broken child D from C.** A separate job disables the
+   ledger entrypoint, leaving C intact. Checks against D fail. This makes the
+   rejection path reproducible even when the agent did a good job.
+5. **Verify A and select it again.** Start a check from A to confirm that its
+   original files, dependency version, and ledger behavior remain intact. Return
+   A as the rollback scenario's selected result, keeping the failed branch's
+   checkpoint and logs for inspection.
+
+```mermaid
+flowchart TD
+    A["A: baseline / SQLAlchemy 1.4.54"] -->|First agent upgrades| B["B: upgraded / checks pass"]
+    B --> Accepted["Passing scenario returns B"]
+    A -->|Second agent upgrades independently| C["C: upgraded / checks pass"]
+    C -->|Inject the demonstration failure| D["D: broken ledger / checks fail"]
+    D --> Rejected["Rollback scenario returns verified A"]
+    A -. Original filesystem is unchanged .-> Rejected
+```
+
+Rollback is a choice of **which saved environment to return**. No downgrade
+command runs in D, and no edits are applied backwards. To continue with the
+working ledger, a caller starts another job from A's image ID. That job already
+has SQLAlchemy `1.4.54`, the original code, and the three original database entries.
+The demo returns this usable checkpoint; it does not deploy a service or launch
+that next job automatically.
+
+Checks also run in fresh children, omitted from the diagram for readability.
+They are disposable: temporary databases created by tests do not become part of
+the selected checkpoint. The original SQLite database is included in the saved
+filesystem; changes made through an API to a database outside the sandbox would
+not be undone by selecting A.
+
+In `run/upgrade.json`, these labels correspond to:
+
+| Label | Field |
+| --- | --- |
+| A | `baseline.image` |
+| B | `scenarios[0].agent.image` |
+| C | `scenarios[1].agent.image` |
+| D | `scenarios[1].injection.image` |
+| Returned checkpoint for each scenario | `scenarios[i].selected_result.checkpoint` |
+
+For a successful default demonstration, the first selected checkpoint equals B,
+and the second equals A; both have `selected_result.verified: true`. If A cannot
+be verified after rejection, its reference is retained with `verified: false`
+and an explicit failure outcome. When running one scenario with `--scenario`,
+look it up by its `name` rather than assuming the default array positions.
+
 ## Run
 
 Use the shared [Python setup](../README.md#setup) and configure `NEBIUS_API_KEY`

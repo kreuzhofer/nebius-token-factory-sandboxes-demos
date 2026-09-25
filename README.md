@@ -48,16 +48,53 @@ checkpoint. Submission returns an operation ID; the launcher then observes the
 job and retrieves its output. The receipt demo runs its coordinator inside a
 sandbox, where it starts and collects the receipt and report jobs.
 
-A retained checkpoint contains filesystem state, including installed dependencies
-and output files. Starting a child from that checkpoint creates a fresh execution
-environment; it does not restore a running process or an in-memory conversation.
-Children can start from the same checkpoint without changing their parent or
-siblings. The analysis and upgrade demos exercise these relationships directly.
-
 Server execution limits and local waiting deadlines are separate. Completion of
 an agent task is also separate from correctness: the demos validate required
 artifacts or run trusted checks before accepting results. A monitor reconnects to
 an existing operation; it does not submit replacement work.
+
+### Checkpoints, branches, and rollback
+
+A **checkpoint** is a saved version of a sandbox's filesystem: code, installed
+packages, and files such as a SQLite database. For example, after installing
+SQLAlchemy 1.4 and creating a working ledger, save that environment as checkpoint
+**A**. It is a reusable starting point for later jobs.
+
+These demos retain a job's filesystem by submitting it with `disposable=False`.
+The resulting checkpoint has an **image ID**, which the launcher records locally.
+An **operation ID** identifies the job that ran; an **image ID** identifies the
+saved filesystem that another job can start from. A job can run many agent tool
+commands before its final filesystem is retained.
+
+To **branch**, start a fresh sandbox from A. It begins with A's files and installed
+packages. The agent can upgrade packages and edit files there, producing a new
+checkpoint **B**. A remains unchanged, so another child can start from the same A.
+These are sandbox filesystem branches; no Git branch is involved.
+
+```mermaid
+flowchart LR
+    A["A: saved working environment"] -->|Start a child and make changes| B["B: changed environment"]
+    B --> T{"Checks pass?"}
+    T -->|Yes| Accept["Return B as the selected result"]
+    T -->|No| Rollback["Verify A and return A instead"]
+    A -. Remains unchanged .-> Rollback
+```
+
+**Rollback** in the upgrade demo means selecting A again after rejecting B.
+The launcher returns A's ID and project archive; a later job can start from A
+with the original packages and files. The failed B remains available for
+diagnostics, subject to retention. Rollback does not reverse each edit, uninstall
+packages in B, or switch a running service back to an earlier version.
+
+The saved state is the filesystem. Processes start afresh, so Python variables
+and an agent's in-memory conversation do not resume. The analysis demo supplies
+saved conversation context explicitly. Changes to external services, such as
+writes to a remote database, are outside this filesystem rollback.
+
+The [upgrade walkthrough](examples/python/upgrade_demo/README.md#follow-the-checkpoints)
+shows the exact checkpoints and result fields. The official
+[branching guide](https://docs.tokenfactory.nebius.com/sandboxes/sdk/python_sdk/branching)
+explains starting independent executions from one saved filesystem.
 
 Checkpoint and event availability are subject to service retention. Download the
 artifacts you need. Workspace archives contain project files and data; prepared
